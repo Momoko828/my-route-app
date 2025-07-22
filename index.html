@@ -6,8 +6,6 @@
     <title>ルート埋まり状況</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -33,29 +31,18 @@
 <body class="flex flex-col items-center justify-center min-h-screen p-4">
 
     <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-4xl border border-gray-200">
-        <h1 class="text-4xl font-extrabold text-gray-900 mb-6 text-center">ルート埋まり状況表示</h1>
-        <p class="text-lg text-gray-700 mb-8 text-center">CSVファイルをアップロードして、各ルート（車両）の埋まり状況をパーセンテージとグラフで確認できます。</p>
+        <h1 class="text-4xl font-extrabold text-gray-900 mb-6 text-center">ルート空き状況表示</h1>
+        <p class="text-lg text-gray-700 mb-8 text-center">CSVファイルをアップロードして、各ルート（車両）の空き状況をパーセンテージで確認できます。</p>
 
         <!-- Display Area for Percentages -->
         <div id="percentageDisplay" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             <!-- Percentages will be dynamically loaded here -->
             <div class="col-span-full text-center text-gray-600 text-lg" id="noDataMessage">
-                CSVファイルをアップロードすると、ここにルート（車両）の埋まり状況が表示されます。
+                CSVファイルをアップロードすると、ここにルート（車両）の空き状況が表示されます。
             </div>
         </div>
 
-        <!-- Chart Display Area -->
-        <div class="p-6 bg-gray-50 rounded-lg border border-gray-200 mb-8">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">ルート埋まり状況グラフ</h2>
-            <div class="relative h-96"> <!-- Fixed height for chart container -->
-                <canvas id="fillRateChart"></canvas>
-            </div>
-            <p class="text-sm text-gray-500 mt-4 text-center">
-                このグラフは、各ルート（車両）の現在の埋まり状況を視覚的に示します。
-            </p>
-        </div>
-
-        <!-- CSV Input Section (Moved below the chart) -->
+        <!-- CSV Input Section -->
         <div class="p-6 bg-gray-50 rounded-lg border border-gray-200">
             <label for="csvFile" class="block text-xl font-semibold text-gray-800 mb-3">CSVファイルをインポート:</label>
             <input type="file" id="csvFile" accept=".csv" class="block w-full text-lg text-gray-700
@@ -68,45 +55,61 @@
             <p class="text-sm text-gray-500 mt-2">
                 「CSVファイルをインポート」ボタンをクリックし、お手元のCSVファイルを選択してください。<br>
                 「RA車両カテゴリ」が「〇〇RC」の形式で、かつ「RA車両名」の末尾（例: TRC\_V1）を車両ごとのラベルとして抽出して表示します。<br>
+                空き数に応じてパーセンテージを計算します（空き数1件=25%）。空き数0の場合は表示されません。<br>
                 文字化けが発生する場合は、CSVファイルのエンコーディングをUTF-8に変換するか、コード内の `reader.readAsText(file, 'UTF-8');` を `reader.readAsText(file, 'Shift_JIS');` などに変更してみてください。
             </p>
         </div>
     </div>
 
     <script>
-        // Chart.js インスタンスを保持する変数
-        let fillRateChart;
-
         // CSVファイル入力要素
         const csvFileInput = document.getElementById('csvFile');
         // パーセンテージ表示領域
         const percentageDisplay = document.getElementById('percentageDisplay');
         // データがない場合のメッセージ
         const noDataMessage = document.getElementById('noDataMessage');
-        // Chart.js のキャンバス要素
-        const chartCanvas = document.getElementById('fillRateChart');
+
+        // 日本語車両名とローマ字表記の対応マップ
+        const japaneseNameMap = {
+            '久保村幹': 'KUBOMURA',
+            '田中 祥太': 'TANAKA',
+            '田中 大空': 'TANAKA',
+            '山内 玲於奈': 'YAMAUCHI',
+            '松尾 威武': 'MATSUO'
+        };
 
         // CSVファイルが選択されたときのイベントリスナー
         csvFileInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
-                // FileReader を使用してファイルを読み込む
-                // エンコーディングを明示的に指定することで文字化けを防ぐ
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const csvContent = e.target.result;
-                    processCSV(csvContent); // CSVコンテンツを処理する関数を呼び出す
+                    processCSV(csvContent);
                 };
-                reader.readAsText(file, 'UTF-8');
+                reader.readAsText(file, 'UTF-8'); // デフォルトはUTF-8
             }
         });
+
+        /**
+         * 日本語車両名をローマ字表記に変換する関数
+         * @param {string} originalName - 元の日本語を含む車両名
+         * @returns {string} 変換されたローマ字表記の車両名
+         */
+        function convertJapaneseName(originalName) {
+            for (const japanese in japaneseNameMap) {
+                if (originalName.includes(japanese)) {
+                    return originalName.replace(japanese, japaneseNameMap[japanese]);
+                }
+            }
+            return originalName; // マッチしない場合は元の名前を返す
+        }
 
         /**
          * CSVコンテンツを解析し、データを処理する関数
          * @param {string} csvString - CSVファイルの生コンテンツ
          */
         function processCSV(csvString) {
-            // 各行を改行で分割し、空の行をフィルタリング
             const lines = csvString.split('\n').filter(line => line.trim() !== '');
             const routeData = [];
 
@@ -118,44 +121,45 @@
 
             // ヘッダー行をスキップするため、i = 1 から開始
             for (let i = 1; i < lines.length; i++) {
-                // カンマで分割し、各要素からダブルクォーテーションと前後の空白を削除
                 const parts = lines[i].split(',').map(part => part.trim().replace(/"/g, ''));
 
-                // 必要な列が存在するか確認 (少なくともインデックス5まで)
                 if (parts.length >= 6) {
-                    const raCategory = parts[0]; // RA車両カテゴリ
-                    const raVehicleName = parts[1]; // RA車両名
-                    
-                    // RA車両名から、末尾の「TRC_V1」のような形式を抽出
-                    const splitVehicleName = raVehicleName.split('-');
-                    let displayLabel = raVehicleName; // デフォルトはRA車両名全体
-                    if (splitVehicleName.length > 0) {
-                        displayLabel = splitVehicleName[splitVehicleName.length - 1]; // 最後の部分を抽出
-                    }
-
-                    // parseIntの前に、数値以外の文字を完全に除去
-                    const operationalCount = parseInt(parts[3].replace(/[^\d]/g, ''), 10); // 稼働数
-                    const availableCount = parseInt(parts[5].replace(/[^\d]/g, ''), 10);   // 空き数
+                    const raCategory = parts[0];
+                    let raVehicleName = parts[1];
+                    const operationalCount = parseInt(parts[3].replace(/[^\d]/g, ''), 10);
+                    const availableCount = parseInt(parts[5].replace(/[^\d]/g, ''), 10);
 
                     // 「RA車両カテゴリ」が「〇〇RC」の形式であるかフィルター
                     // かつ、RA車両名（元の文字列）が空でないことを確認
                     if (raCategory.endsWith('RC') && raVehicleName !== '') {
-                        // 有効な数値であることを確認
+                        // 日本語車両名を変換
+                        raVehicleName = convertJapaneseName(raVehicleName);
+
+                        // RA車両名から、末尾の「TRC_V1」のような形式を抽出
+                        const splitVehicleName = raVehicleName.split('-');
+                        let displayLabel = raVehicleName;
+                        if (splitVehicleName.length > 0) {
+                            displayLabel = splitVehicleName[splitVehicleName.length - 1];
+                        }
+
                         if (!isNaN(operationalCount) && !isNaN(availableCount)) {
-                            let fillRate;
-                            if (operationalCount > 0) {
-                                const occupiedCount = operationalCount - availableCount;
-                                fillRate = (occupiedCount / operationalCount) * 100;
+                            let emptyRate;
+                            const maxCapacity = 4; // 空き数の上限を4件とする
+
+                            if (availableCount >= maxCapacity) {
+                                emptyRate = 100; // 空き数が4件以上なら100%
                             } else {
-                                // 稼働数が0の場合、埋まり状況は0%とする
-                                fillRate = 0;
+                                emptyRate = (availableCount / maxCapacity) * 100; // 空き数1件あたり25%
                             }
-                            // 埋まり状況がマイナスになる場合は0にクリップ
-                            fillRate = Math.max(0, fillRate);
+                            
+                            // 空き数が0の場合は表示しない
+                            if (availableCount === 0) {
+                                continue; // このデータはスキップ
+                            }
 
                             routeData.push({
-                                name: displayLabel, // 抽出したラベルをルート名として使用
-                                fillRate: parseFloat(fillRate.toFixed(2)) // 小数点以下2桁に丸める
+                                name: displayLabel,
+                                emptyRate: parseFloat(emptyRate.toFixed(2))
                             });
                         } else {
                             console.warn(`無効なデータ行をスキップしました (数値変換エラー): ${lines[i]}`);
@@ -166,16 +170,16 @@
                 }
             }
 
-            // データを埋まり率で降順にソート
-            routeData.sort((a, b) => b.fillRate - a.fillRate);
+            // データを空き率で降順にソート
+            routeData.sort((a, b) => b.emptyRate - a.emptyRate);
 
             displayPercentages(routeData); // パーセンテージを表示
-            renderChart(routeData);       // グラフをレンダリング
+            // 横棒グラフは不要なため、renderChart関数の呼び出しを削除
         }
 
         /**
          * 各ルートのパーセンテージをHTMLで表示する関数
-         * @param {Array<Object>} data - ルートデータ（nameとfillRateプロパティを持つオブジェクトの配列）
+         * @param {Array<Object>} data - ルートデータ（nameとemptyRateプロパティを持つオブジェクトの配列）
          */
         function displayPercentages(data) {
             percentageDisplay.innerHTML = ''; // 既存の表示をクリア
@@ -188,140 +192,21 @@
 
             data.forEach(route => {
                 const card = document.createElement('div');
+                // 空き率に応じて色を変更
                 card.className = `p-5 rounded-lg shadow-md flex flex-col items-center justify-center
-                                  ${route.fillRate >= 90 ? 'bg-red-100 border-red-300' :
-                                    route.fillRate >= 70 ? 'bg-yellow-100 border-yellow-300' :
-                                    'bg-green-100 border-green-300'} border-2 transition-all duration-300 hover:shadow-lg`;
+                                  ${route.emptyRate >= 75 ? 'bg-green-100 border-green-300' : // 空きが多いほど緑
+                                    route.emptyRate >= 50 ? 'bg-yellow-100 border-yellow-300' :
+                                    'bg-red-100 border-red-300'} border-2 transition-all duration-300 hover:shadow-lg`;
                 card.innerHTML = `
                     <p class="text-xl font-bold text-gray-800 mb-2">${route.name}</p>
-                    <p class="text-3xl font-extrabold ${route.fillRate >= 90 ? 'text-red-700' :
-                                                        route.fillRate >= 70 ? 'text-yellow-700' :
-                                                        'text-green-700'}">${route.fillRate}%</p>
+                    <p class="text-3xl font-extrabold ${route.emptyRate >= 75 ? 'text-green-700' :
+                                                        route.emptyRate >= 50 ? 'text-yellow-700' :
+                                                        'text-red-700'}">${route.emptyRate}%</p>
                 `;
                 percentageDisplay.appendChild(card);
             });
         }
-
-        /**
-         * Chart.js を使用して横棒グラフをレンダリングする関数
-         * @param {Array<Object>} data - ルートデータ（nameとfillRateプロパティを持つオブジェクトの配列）
-         */
-        function renderChart(data) {
-            const labels = data.map(route => route.name);
-            const fillRates = data.map(route => route.fillRate);
-
-            // グラフが既に存在する場合は破棄する
-            if (fillRateChart) {
-                fillRateChart.destroy();
-            }
-
-            // Chart.js の新しいインスタンスを作成
-            fillRateChart = new Chart(chartCanvas, {
-                type: 'bar', // 横棒グラフ
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: '埋まり状況 (%)',
-                        data: fillRates,
-                        backgroundColor: fillRates.map(rate => {
-                            if (rate >= 90) return 'rgba(239, 68, 68, 0.8)'; // Red
-                            if (rate >= 70) return 'rgba(251, 191, 36, 0.8)'; // Yellow
-                            return 'rgba(16, 185, 129, 0.8)'; // Green
-                        }),
-                        borderColor: fillRates.map(rate => {
-                            if (rate >= 90) return 'rgba(239, 68, 68, 1)';
-                            if (rate >= 70) return 'rgba(251, 191, 36, 1)';
-                            return 'rgba(16, 185, 129, 1)';
-                        }),
-                        borderWidth: 1,
-                        borderRadius: 5, // 棒の角を丸くする
-                    }]
-                },
-                options: {
-                    indexAxis: 'y', // これを 'y' に設定すると横棒グラフになる
-                    responsive: true,
-                    maintainAspectRatio: false, // コンテナのサイズに合わせて調整
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: 'top',
-                            labels: {
-                                font: {
-                                    size: 14,
-                                    weight: 'bold'
-                                },
-                                color: '#334155'
-                            }
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `${context.dataset.label}: ${context.raw}%`;
-                                }
-                            },
-                            titleFont: { size: 16, weight: 'bold' },
-                            bodyFont: { size: 14 },
-                            padding: 10,
-                            boxPadding: 5,
-                            displayColors: true,
-                            backgroundColor: 'rgba(0,0,0,0.7)',
-                            borderColor: 'rgba(255,255,255,0.2)',
-                            borderWidth: 1,
-                            cornerRadius: 6
-                        }
-                    },
-                    scales: {
-                        x: {
-                            beginAtZero: true,
-                            max: 100, // 最大値を100%に設定
-                            title: {
-                                display: true,
-                                text: '埋まり状況 (%)',
-                                font: {
-                                    size: 16,
-                                    weight: 'bold'
-                                },
-                                color: '#334155'
-                            },
-                            ticks: {
-                                callback: function(value) {
-                                    return value + '%';
-                                },
-                                font: {
-                                    size: 12
-                                },
-                                color: '#475569'
-                            },
-                            grid: {
-                                display: true,
-                                drawBorder: false,
-                                color: 'rgba(203, 213, 225, 0.5)'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'ルート名',
-                                font: {
-                                    size: 16,
-                                    weight: 'bold'
-                                },
-                                color: '#334155'
-                            },
-                            ticks: {
-                                font: {
-                                    size: 12
-                                },
-                                color: '#475569'
-                            },
-                            grid: {
-                                display: false // Y軸のグリッド線は非表示
-                            }
-                        }
-                    }
-                }
-            });
-        }
+        // Chart.js のレンダリング関数は不要になったため削除
     </script>
 </body>
 </html>

@@ -67,7 +67,8 @@
                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
             <p class="text-sm text-gray-500 mt-2">
                 「CSVファイルをインポート」ボタンをクリックし、お手元のCSVファイルを選択してください。<br>
-                「RA車両カテゴリ」が「〇〇RC」の形式で、かつ車両ごとのデータが抽出されます。
+                「RA車両カテゴリ」が「〇〇RC」の形式で、かつ「RA車両名」の末尾（例: TRC\_V1）を車両ごとのラベルとして抽出して表示します。<br>
+                文字化けが発生する場合は、CSVファイルのエンコーディングをUTF-8に変換するか、コード内の `reader.readAsText(file, 'UTF-8');` を `reader.readAsText(file, 'Shift_JIS');` などに変更してみてください。
             </p>
         </div>
     </div>
@@ -96,8 +97,6 @@
                     const csvContent = e.target.result;
                     processCSV(csvContent); // CSVコンテンツを処理する関数を呼び出す
                 };
-                // CSVファイルのエンコーディングがUTF-8であることを前提とします。
-                // もしShift-JISなどの場合は reader.readAsText(file, 'Shift_JIS'); のように変更してください。
                 reader.readAsText(file, 'UTF-8');
             }
         });
@@ -126,12 +125,20 @@
                 if (parts.length >= 6) {
                     const raCategory = parts[0]; // RA車両カテゴリ
                     const raVehicleName = parts[1]; // RA車両名
+                    
+                    // RA車両名から、末尾の「TRC_V1」のような形式を抽出
+                    const splitVehicleName = raVehicleName.split('-');
+                    let displayLabel = raVehicleName; // デフォルトはRA車両名全体
+                    if (splitVehicleName.length > 0) {
+                        displayLabel = splitVehicleName[splitVehicleName.length - 1]; // 最後の部分を抽出
+                    }
+
                     // parseIntの前に、数値以外の文字を完全に除去
-                    const operationalCount = parseInt(parts[3].replace(/[^0-9]/g, ''), 10); // 稼働数
-                    const availableCount = parseInt(parts[5].replace(/[^0-9]/g, ''), 10);   // 空き数
+                    const operationalCount = parseInt(parts[3].replace(/[^\d]/g, ''), 10); // 稼働数
+                    const availableCount = parseInt(parts[5].replace(/[^\d]/g, ''), 10);   // 空き数
 
                     // 「RA車両カテゴリ」が「〇〇RC」の形式であるかフィルター
-                    // かつ、RA車両名が空でないことを確認
+                    // かつ、RA車両名（元の文字列）が空でないことを確認
                     if (raCategory.endsWith('RC') && raVehicleName !== '') {
                         // 有効な数値であることを確認
                         if (!isNaN(operationalCount) && !isNaN(availableCount)) {
@@ -143,8 +150,11 @@
                                 // 稼働数が0の場合、埋まり状況は0%とする
                                 fillRate = 0;
                             }
+                            // 埋まり状況がマイナスになる場合は0にクリップ
+                            fillRate = Math.max(0, fillRate);
+
                             routeData.push({
-                                name: raVehicleName, // RA車両名をルート名として使用
+                                name: displayLabel, // 抽出したラベルをルート名として使用
                                 fillRate: parseFloat(fillRate.toFixed(2)) // 小数点以下2桁に丸める
                             });
                         } else {

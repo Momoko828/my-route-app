@@ -90,12 +90,15 @@
             const file = event.target.files[0];
             if (file) {
                 // FileReader を使用してファイルを読み込む
+                // エンコーディングを明示的に指定することで文字化けを防ぐ
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const csvContent = e.target.result;
                     processCSV(csvContent); // CSVコンテンツを処理する関数を呼び出す
                 };
-                reader.readAsText(file); // ファイルをテキストとして読み込む
+                // CSVファイルのエンコーディングがUTF-8であることを前提とします。
+                // もしShift-JISなどの場合は reader.readAsText(file, 'Shift_JIS'); のように変更してください。
+                reader.readAsText(file, 'UTF-8');
             }
         });
 
@@ -115,18 +118,19 @@
 
             // ヘッダー行をスキップするため、i = 1 から開始
             for (let i = 1; i < lines.length; i++) {
-                // カンマで分割し、ダブルクォーテーションを削除
+                // カンマで分割し、各要素からダブルクォーテーションと前後の空白を削除
                 const parts = lines[i].split(',').map(part => part.trim().replace(/"/g, ''));
 
                 // 必要な列が存在するか確認 (少なくともインデックス5まで)
                 if (parts.length >= 6) {
                     const raCategory = parts[0]; // RA車両カテゴリ
-                    const operationalCount = parseInt(parts[3], 10); // 稼働数
-                    const availableCount = parseInt(parts[5], 10);   // 空き数
+                    // parseIntの前に、数値以外の文字を完全に除去
+                    const operationalCount = parseInt(parts[3].replace(/[^0-9]/g, ''), 10); // 稼働数
+                    const availableCount = parseInt(parts[5].replace(/[^0-9]/g, ''), 10);   // 空き数
 
                     // 「RA車両カテゴリ」が「〇〇RC」の形式であるかフィルター
                     if (raCategory.endsWith('RC')) {
-                        // 有効な数値であることを確認し、稼働数が0でないことを確認
+                        // 有効な数値であることを確認
                         if (!isNaN(operationalCount) && !isNaN(availableCount)) {
                             let fillRate;
                             if (operationalCount > 0) {
@@ -141,7 +145,7 @@
                                 fillRate: parseFloat(fillRate.toFixed(2)) // 小数点以下2桁に丸める
                             });
                         } else {
-                            console.warn(`無効なデータ行をスキップしました (数値エラー): ${lines[i]}`);
+                            console.warn(`無効なデータ行をスキップしました (数値変換エラー): ${lines[i]}`);
                         }
                     }
                 } else {
@@ -150,7 +154,7 @@
             }
 
             // データを埋まり率で降順にソート
-            routeData.sort((a, b) => b.fillRate - a.fillRate);
+            routeData.sort((a, b) => b.fillRate - a.b.fillRate);
 
             displayPercentages(routeData); // パーセンテージを表示
             renderChart(routeData);       // グラフをレンダリング

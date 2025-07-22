@@ -34,13 +34,13 @@
 
     <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-4xl border border-gray-200">
         <h1 class="text-4xl font-extrabold text-gray-900 mb-6 text-center">ルート埋まり状況表示</h1>
-        <p class="text-lg text-gray-700 mb-8 text-center">CSVファイルをアップロードして、各ルートの埋まり状況をパーセンテージとグラフで確認できます。</p>
+        <p class="text-lg text-gray-700 mb-8 text-center">CSVファイルをアップロードして、各ルート（車両）の埋まり状況をパーセンテージとグラフで確認できます。</p>
 
         <!-- Display Area for Percentages -->
         <div id="percentageDisplay" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             <!-- Percentages will be dynamically loaded here -->
             <div class="col-span-full text-center text-gray-600 text-lg" id="noDataMessage">
-                CSVファイルをアップロードすると、ここにルートの埋まり状況が表示されます。
+                CSVファイルをアップロードすると、ここにルート（車両）の埋まり状況が表示されます。
             </div>
         </div>
 
@@ -51,7 +51,7 @@
                 <canvas id="fillRateChart"></canvas>
             </div>
             <p class="text-sm text-gray-500 mt-4 text-center">
-                このグラフは、各ルートの現在の埋まり状況を視覚的に示します。
+                このグラフは、各ルート（車両）の現在の埋まり状況を視覚的に示します。
             </p>
         </div>
 
@@ -66,8 +66,8 @@
                 hover:file:bg-blue-100 cursor-pointer
                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
             <p class="text-sm text-gray-500 mt-2">
-                添付されたCSVファイル形式（例: "RA車両カテゴリ","RA車両名",...,"稼働数",...,"空き数",...）に対応しています。<br>
-                「RA車両カテゴリ」が「〇〇RC」の形式のデータのみを抽出します。
+                「CSVファイルをインポート」ボタンをクリックし、お手元のCSVファイルを選択してください。<br>
+                「RA車両カテゴリ」が「〇〇RC」の形式で、かつ車両ごとのデータが抽出されます。
             </p>
         </div>
     </div>
@@ -113,6 +113,7 @@
 
             // CSVヘッダーのインデックス（添付されたCSVファイルに基づいています）
             // "RA車両カテゴリ" (index 0)
+            // "RA車両名" (index 1)
             // "稼働数" (index 3)
             // "空き数" (index 5)
 
@@ -124,12 +125,14 @@
                 // 必要な列が存在するか確認 (少なくともインデックス5まで)
                 if (parts.length >= 6) {
                     const raCategory = parts[0]; // RA車両カテゴリ
+                    const raVehicleName = parts[1]; // RA車両名
                     // parseIntの前に、数値以外の文字を完全に除去
                     const operationalCount = parseInt(parts[3].replace(/[^0-9]/g, ''), 10); // 稼働数
                     const availableCount = parseInt(parts[5].replace(/[^0-9]/g, ''), 10);   // 空き数
 
                     // 「RA車両カテゴリ」が「〇〇RC」の形式であるかフィルター
-                    if (raCategory.endsWith('RC')) {
+                    // かつ、RA車両名が空でないことを確認
+                    if (raCategory.endsWith('RC') && raVehicleName !== '') {
                         // 有効な数値であることを確認
                         if (!isNaN(operationalCount) && !isNaN(availableCount)) {
                             let fillRate;
@@ -141,7 +144,7 @@
                                 fillRate = 0;
                             }
                             routeData.push({
-                                name: raCategory, // RA車両カテゴリをルート名として使用
+                                name: raVehicleName, // RA車両名をルート名として使用
                                 fillRate: parseFloat(fillRate.toFixed(2)) // 小数点以下2桁に丸める
                             });
                         } else {
@@ -154,7 +157,7 @@
             }
 
             // データを埋まり率で降順にソート
-            routeData.sort((a, b) => b.fillRate - a.b.fillRate);
+            routeData.sort((a, b) => b.fillRate - a.fillRate);
 
             displayPercentages(routeData); // パーセンテージを表示
             renderChart(routeData);       // グラフをレンダリング
